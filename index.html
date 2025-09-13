@@ -1,0 +1,502 @@
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo de Damas 3D</title>
+    <style>
+        body {
+            background: linear-gradient(120deg, #f5f7fa, #c3cfe2);
+            font-family: 'Montserrat', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        h1 {
+            margin-top: 30px;
+            color: #333;
+            letter-spacing: 2px;
+        }
+        #status {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        #restart {
+            background: #2196f3;
+            color: #fff;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 1em;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: background 0.2s;
+        }
+        #restart:hover {
+            background: #1769aa;
+        }
+        #container3d {
+            width: min(80vw, 80vh);
+            height: min(80vw, 80vh);
+            min-width: 400px;
+            min-height: 400px;
+            max-width: 100vw;
+            max-height: 100vh;
+    #fullscreen {
+        background: #444;
+        color: #fff;
+        border: none;
+        padding: 8px 18px;
+        border-radius: 6px;
+        font-size: 1em;
+        cursor: pointer;
+        margin-bottom: 20px;
+        margin-left: 10px;
+        transition: background 0.2s;
+    }
+    #fullscreen:hover {
+        background: #222;
+    }
+            margin-bottom: 20px;
+        }
+        @media (max-width: 600px) {
+            #container3d { width: 98vw; height: 98vw; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Jogo de Damas 3D</h1>
+    <div id="status">Carregando...</div>
+    <div style="display:flex;align-items:center;gap:10px;">
+        <button id="restart">Novo Jogo (vs Máquina)</button>
+        <button id="multiplayer">Multiplayer</button>
+        <button id="fullscreen">Tela Cheia</button>
+    </div>
+    <div id="multiplayer-ui" style="display:none;flex-direction:column;align-items:center;margin:20px 0;gap:10px;">
+        <div id="mp-step1">
+            <button id="create-room">Criar Sala</button>
+            <input id="join-code" placeholder="Código da sala" maxlength="8" style="width:120px;text-align:center;">
+            <button id="join-room">Entrar</button>
+        </div>
+        <div id="mp-step2" style="display:none;">
+            <span id="room-link"></span>
+            <div>Escolha sua cor:
+                <button id="choose-w">Brancas</button>
+                <button id="choose-b">Pretas</button>
+            </div>
+        </div>
+        <div id="mp-wait" style="display:none;">Aguardando outro jogador entrar...</div>
+    </div>
+    <div id="container3d"></div>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.110.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+    const API = 'http://localhost:5000/api';
+    let board = [];
+    let turn = 'w';
+    let playerColor = 'w'; // 'w' ou 'b'
+    let winner = null;
+    let selected = null;
+    let validMoves = [];
+    let scene, camera, renderer, controls;
+    let pieces3D = [];
+    let squares3D = [];
+    const SQUARE_SIZE = 1;
+    const BOARD_SIZE = 8;
+    const PIECE_HEIGHT = 0.25;
+    const PIECE_RADIUS = 0.38;
+    const KING_HEIGHT = 0.45;
+    const HIGHLIGHT_COLOR = 0x2196f3;
+    const MOVE_SOFT_COLOR = 0x90caf9;
+    const MOVE_SOFT_COLOR_USER = 0xff5252; // vermelho para indicar movimento possível
+
+    // --- Multiplayer ---
+    let multiplayer = false;
+    let roomId = null;
+    let mpPolling = null;
+    let mpJoined = false;
+
+    async function newGame() {
+        multiplayer = false;
+        if (mpPolling) clearInterval(mpPolling);
+        const res = await fetch(`${API}/new_game`, {method: 'POST'});
+        const data = await res.json();
+        board = data.board;
+        turn = data.turn;
+        winner = data.winner;
+        selected = null;
+        validMoves = [];
+        renderStatus();
+        renderBoard3D();
+    }
+
+    // --- Multiplayer ---
+    function showMultiplayerUI(show) {
+        document.getElementById('multiplayer-ui').style.display = show ? 'flex' : 'none';
+    }
+
+    document.getElementById('multiplayer').onclick = () => {
+        showMultiplayerUI(true);
+    };
+    // Defina aqui o seu IP público ou domínio
+    const PUBLIC_URL = 'http://192.168.0.3:5000/index.html';
+
+    document.getElementById('create-room').onclick = async () => {
+        const res = await fetch(`${API}/create_room`, {method:'POST'});
+        const data = await res.json();
+        roomId = data.room_id;
+        document.getElementById('mp-step1').style.display = 'none';
+        document.getElementById('mp-step2').style.display = 'block';
+        const link = `${PUBLIC_URL}?room=${roomId}`;
+        document.getElementById('room-link').innerHTML = `Código da sala: <b>${roomId}</b><br>Link: <a href="${link}" target="_blank">${link}</a> <button onclick=\"navigator.clipboard.writeText('${link}')\">Copiar link</button>`;
+    };
+    document.getElementById('join-room').onclick = () => {
+        roomId = document.getElementById('join-code').value.trim();
+        if (roomId.length === 8) {
+            document.getElementById('mp-step1').style.display = 'none';
+            document.getElementById('mp-step2').style.display = 'block';
+            document.getElementById('room-link').innerHTML = `Código da sala: <b>${roomId}</b>`;
+        } else {
+            alert('Código inválido!');
+        }
+    };
+
+    // Preencher automaticamente o campo de código se vier via parâmetro na URL
+    window.addEventListener('DOMContentLoaded', () => {
+        const params = new URLSearchParams(window.location.search);
+        const roomParam = params.get('room');
+        if (roomParam && roomParam.length === 8) {
+            showMultiplayerUI(true);
+            document.getElementById('join-code').value = roomParam;
+            document.getElementById('join-room').click();
+        }
+    });
+    document.getElementById('choose-w').onclick = () => joinRoom('w');
+    document.getElementById('choose-b').onclick = () => joinRoom('b');
+
+    async function joinRoom(color) {
+        if (!roomId) return;
+        const res = await fetch(`${API}/join_room`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({room_id: roomId, player: color})
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert(data.error || 'Erro ao entrar na sala');
+            return;
+        }
+        playerColor = color;
+        multiplayer = true;
+        mpJoined = true;
+        document.getElementById('mp-step2').style.display = 'none';
+        document.getElementById('mp-wait').style.display = 'block';
+        pollGameState();
+    }
+
+    async function pollGameState() {
+        if (mpPolling) clearInterval(mpPolling);
+        async function fetchState() {
+            const res = await fetch(`${API}/game_state`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({room_id: roomId})
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            board = data.board;
+            turn = data.turn;
+            winner = data.winner;
+            renderStatus();
+            renderBoard3D();
+            if (mpJoined && data.turn && data.turn !== playerColor && !data.winner) {
+                document.getElementById('mp-wait').textContent = 'Aguardando jogada do adversário...';
+            } else if (mpJoined && data.turn === playerColor && !data.winner) {
+                document.getElementById('mp-wait').textContent = 'Sua vez!';
+            } else if (data.winner) {
+                document.getElementById('mp-wait').textContent = 'Jogo finalizado!';
+            } else {
+                document.getElementById('mp-wait').textContent = 'Aguardando outro jogador entrar...';
+            }
+        }
+        await fetchState();
+        mpPolling = setInterval(fetchState, 1500);
+    }
+
+    function renderStatus() {
+        const status = document.getElementById('status');
+        if (winner) {
+            if (winner === playerColor) {
+                status.textContent = 'Você venceu! 🎉';
+            } else if (winner === (playerColor === 'w' ? 'b' : 'w')) {
+                status.textContent = 'O adversário venceu! 😢';
+            } else {
+                status.textContent = 'Empate!';
+            }
+        } else if (turn === playerColor) {
+            status.textContent = playerColor === 'w' ? 'Sua vez (Brancas)' : 'Sua vez (Pretas)';
+        } else {
+            status.textContent = playerColor === 'w' ? 'Vez do adversário (Pretas)...' : 'Vez do adversário (Brancas)...';
+        }
+    }
+
+    // --- 3D ---
+    function init3D() {
+        const container = document.getElementById('container3d');
+        scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(50, container.offsetWidth/container.offsetHeight, 0.1, 100);
+    camera.position.set(3.5, 10, 12);
+    camera.lookAt(3.5, 0, 3.5);
+        renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+        renderer.setSize(container.offsetWidth, container.offsetHeight);
+        container.innerHTML = '';
+        container.appendChild(renderer.domElement);
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enablePan = false;
+    controls.minDistance = 8;
+    controls.maxDistance = 30;
+    controls.target.set(3.5, 0, 3.5);
+    controls.update();
+        // Luz
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+        // Tabuleiro
+        squares3D = [];
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const color = (r + c) % 2 === 1 ? 0x7a5230 : 0xf0d9b5;
+                const geometry = new THREE.BoxGeometry(SQUARE_SIZE, 0.1, SQUARE_SIZE);
+                const material = new THREE.MeshPhongMaterial({color});
+                const square = new THREE.Mesh(geometry, material);
+                square.position.set(c, 0, r);
+                square.userData = {row: r, col: c};
+                scene.add(square);
+                squares3D.push(square);
+            }
+        }
+        animate();
+    }
+
+    function renderBoard3D() {
+        if (!scene) init3D();
+        // Remove peças antigas
+        for (const p of pieces3D) scene.remove(p);
+        pieces3D = [];
+        // Peças
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const piece = board[r][c];
+                if (piece !== '.') {
+                    const color = piece.toLowerCase() === 'w' ? 0xffffff : 0x222222;
+                    const geometry = new THREE.CylinderGeometry(PIECE_RADIUS, PIECE_RADIUS, PIECE_HEIGHT, 48);
+                    const material = new THREE.MeshPhongMaterial({color});
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.position.set(c, PIECE_HEIGHT/2+0.08, r);
+                    mesh.userData = {row: r, col: c, piece};
+                    // Dama
+                    if (piece === 'W' || piece === 'B') {
+                        const crown = new THREE.CylinderGeometry(PIECE_RADIUS*0.7, PIECE_RADIUS*0.7, KING_HEIGHT, 48);
+                        const crownMat = new THREE.MeshPhongMaterial({color:0xffd700});
+                        const crownMesh = new THREE.Mesh(crown, crownMat);
+                        crownMesh.position.set(0, PIECE_HEIGHT/2+KING_HEIGHT/2, 0);
+                        mesh.add(crownMesh);
+                    }
+                    mesh.cursor = 'pointer';
+                    mesh.callback = onPieceClick;
+                    scene.add(mesh);
+                    pieces3D.push(mesh);
+                }
+            }
+        }
+        // Destacar seleção e movimentos válidos
+        for (const sq of squares3D) {
+            sq.material.emissive.setHex(0x000000);
+        }
+        if (selected) {
+            const {row, col} = selected;
+            const sq = squares3D.find(sq => sq.userData.row === row && sq.userData.col === col);
+            if (sq) sq.material.emissive.setHex(HIGHLIGHT_COLOR);
+            if (turn === playerColor) {
+                for (const m of validMoves) {
+                    const sq2 = squares3D.find(sq => sq.userData.row === m.to[0] && sq.userData.col === m.to[1]);
+                    if (sq2) sq2.material.emissive.setHex(MOVE_SOFT_COLOR_USER);
+                }
+            } else {
+                for (const m of validMoves) {
+                    const sq2 = squares3D.find(sq => sq.userData.row === m.to[0] && sq.userData.col === m.to[1]);
+                    if (sq2) sq2.material.emissive.setHex(MOVE_SOFT_COLOR);
+                }
+            }
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+    }
+
+    // --- Interação ---
+    function getValidMovesForPiece(r, c) {
+        let moves = [];
+        for (let rr = 0; rr < 8; rr++) {
+            for (let cc = 0; cc < 8; cc++) {
+                const piece = board[rr][cc];
+                if (turn === 'w' && (piece === 'w' || piece === 'W')) {
+                    moves = moves.concat(getPieceMoves(board, rr, cc, piece));
+                }
+            }
+        }
+        // Se houver capturas, só pode capturar
+        const captures = moves.filter(m => m.capture);
+        moves = captures.length ? captures : moves;
+        // Apenas movimentos com o maior número de capturas
+        if (captures.length) {
+            const maxCap = Math.max(...captures.map(m => Array.isArray(m.capture) ? m.capture.length : 1));
+            moves = captures.filter(m => (Array.isArray(m.capture) ? m.capture.length : 1) === maxCap);
+        }
+        return moves.filter(m => m.from[0] === r && m.from[1] === c);
+    }
+
+    function getPieceMoves(board, r, c, piece) {
+        // Simplificado: só para destacar possíveis casas, backend valida tudo
+        const moves = [];
+        const directions = [];
+        if (piece === 'w' || piece === 'W') directions.push([-1, -1], [-1, 1]);
+        if (piece === 'W') directions.push([1, -1], [1, 1]);
+        for (const [dr, dc] of directions) {
+            let step = 1;
+            while (true) {
+                const nr = r + dr*step, nc = c + dc*step;
+                if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) break;
+                if (board[nr][nc] === '.') {
+                    moves.push({from: [r, c], to: [nr, nc], capture: null});
+                    if (piece !== 'W') break;
+                } else if (board[nr][nc].toLowerCase() === 'b') {
+                    // Captura
+                    let step2 = step+1;
+                    while (true) {
+                        const nr2 = r + dr*step2, nc2 = c + dc*step2;
+                        if (nr2 < 0 || nr2 >= 8 || nc2 < 0 || nc2 >= 8) break;
+                        if (board[nr2][nc2] === '.') {
+                            moves.push({from: [r, c], to: [nr2, nc2], capture: [[nr, nc]]});
+                        } else break;
+                        step2++;
+                    }
+                    break;
+                } else break;
+                step++;
+            }
+        }
+        return moves;
+    }
+
+    function onPieceClick(mesh) {
+        if (winner || turn !== playerColor) return;
+        const {row, col, piece} = mesh.userData;
+        if ((playerColor === 'w' && (piece === 'w' || piece === 'W')) || (playerColor === 'b' && (piece === 'b' || piece === 'B'))) {
+            selected = {row, col};
+            validMoves = getValidMovesForPiece(row, col);
+            renderBoard3D();
+        }
+    }
+
+    function onSquareClick(mesh) {
+        if (!selected || winner || turn !== playerColor) return;
+        const {row, col} = mesh.userData;
+        const move = validMoves.find(m => m.to[0] === row && m.to[1] === col);
+        if (move) sendMove(move);
+    }
+
+    async function sendMove(move) {
+        if (multiplayer) {
+            const res = await fetch(`${API}/move_multiplayer`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({room_id: roomId, move, player: playerColor})
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                alert(data.error || 'Movimento inválido!');
+                selected = null;
+                validMoves = [];
+                renderBoard3D();
+                return;
+            }
+            // Estado será atualizado pelo polling
+            selected = null;
+            validMoves = [];
+        } else {
+            const res = await fetch(`${API}/move`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({board, move, player: playerColor})
+            });
+            if (!res.ok) {
+                alert('Movimento inválido!');
+                selected = null;
+                validMoves = [];
+                renderBoard3D();
+                return;
+            }
+            const data = await res.json();
+            board = data.board;
+            turn = data.turn;
+            winner = data.winner;
+            selected = null;
+            validMoves = [];
+            renderStatus();
+            renderBoard3D();
+            // Delay de 2s para jogada do oponente (modo 2 jogadores)
+            if (!winner && turn !== playerColor) {
+                setTimeout(() => {
+                    playerColor = turn;
+                    renderStatus();
+                    renderBoard3D();
+                }, 2000);
+            }
+        }
+    }
+    document.getElementById('fullscreen').onclick = () => {
+        const el = document.getElementById('container3d');
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        else if (el.msRequestFullscreen) el.msRequestFullscreen();
+    };
+
+    // --- Eventos Mouse 3D ---
+    function setup3DMouseEvents() {
+        renderer.domElement.addEventListener('pointerdown', function(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            const mouse = new THREE.Vector2(
+                ((event.clientX - rect.left) / rect.width) * 2 - 1,
+                -((event.clientY - rect.top) / rect.height) * 2 + 1
+            );
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects([...pieces3D, ...squares3D]);
+            if (intersects.length > 0) {
+                const mesh = intersects[0].object;
+                if (mesh.userData.piece && (mesh.userData.piece === 'w' || mesh.userData.piece === 'W')) {
+                    onPieceClick(mesh);
+                } else if (mesh.userData.row !== undefined && mesh.userData.col !== undefined) {
+                    onSquareClick(mesh);
+                }
+            }
+        });
+    }
+
+    document.getElementById('restart').onclick = () => {
+        const escolha = prompt('Digite "w" para jogar de brancas ou "b" para jogar de pretas (2 jogadores):', 'w');
+        if (escolha === 'b') playerColor = 'b'; else playerColor = 'w';
+        newGame();
+        showMultiplayerUI(false);
+    };
+    window.onload = () => { newGame(); setTimeout(setup3DMouseEvents, 1000); };
+    </script>
+</body>
