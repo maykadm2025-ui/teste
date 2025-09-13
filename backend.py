@@ -4,6 +4,11 @@ import copy
 import uuid
 from threading import Lock
 import time
+import logging
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
@@ -161,8 +166,10 @@ def create_room():
             "players": [],
             "winner": None,
             "last_move": None,
-            "created": time.time()
+            "created": time.time(),
+            "connections": {}  # Novo: armazenar informações de conexão WebRTC
         }
+        logger.info(f"Sala criada: {room_id}")
     return jsonify({"room_id": room_id})
 
 @app.route('/api/join_room', methods=['POST'])
@@ -184,6 +191,7 @@ def join_room():
             return jsonify({"error": "Sala cheia"}), 400
         
         room["players"].append(player)
+        logger.info(f"Jogador {player} entrou na sala {room_id}")
         
         return jsonify({
             "success": True, 
@@ -259,11 +267,56 @@ def move_multiplayer():
         else:
             room["turn"] = opponent
         
+        logger.info(f"Jogador {player} moveu na sala {room_id}")
         return jsonify({
             "board": room["board"], 
             "turn": room["turn"], 
             "winner": room["winner"]
         })
+
+# Novas rotas para sinalização WebRTC (simplificadas)
+@app.route('/api/webrtc/offer', methods=['POST'])
+def handle_offer():
+    data = request.json
+    room_id = data.get("room_id")
+    offer = data.get("offer")
+    
+    with room_lock:
+        if room_id not in rooms:
+            return jsonify({"error": "Sala não encontrada"}), 404
+        
+        # Em uma implementação real, você armazenaria a oferta e a enviaria para o outro jogador
+        # Esta é uma implementação simplificada
+        logger.info(f"Oferta WebRTC recebida para sala {room_id}")
+        return jsonify({"success": True})
+
+@app.route('/api/webrtc/answer', methods=['POST'])
+def handle_answer():
+    data = request.json
+    room_id = data.get("room_id")
+    answer = data.get("answer")
+    
+    with room_lock:
+        if room_id not in rooms:
+            return jsonify({"error": "Sala não encontrada"}), 404
+        
+        # Em uma implementação real, você armazenaria a resposta e a enviaria para o outro jogador
+        logger.info(f"Resposta WebRTC recebida para sala {room_id}")
+        return jsonify({"success": True})
+
+@app.route('/api/webrtc/ice-candidate', methods=['POST'])
+def handle_ice_candidate():
+    data = request.json
+    room_id = data.get("room_id")
+    candidate = data.get("candidate")
+    
+    with room_lock:
+        if room_id not in rooms:
+            return jsonify({"error": "Sala não encontrada"}), 404
+        
+        # Em uma implementação real, você armazenaria o candidato ICE e o enviaria para o outro jogador
+        logger.info(f"Candidato ICE recebido para sala {room_id}")
+        return jsonify({"success": True})
 
 # Servir index.html e arquivos estáticos
 from flask import send_from_directory
