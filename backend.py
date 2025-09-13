@@ -5,6 +5,7 @@ import uuid
 from threading import Lock
 import time
 import logging
+from collections import deque
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -16,6 +17,9 @@ CORS(app)
 # Estrutura para salas multiplayer
 rooms = {}
 room_lock = Lock()
+
+# Armazenar mensagens de sinalização WebRTC
+signaling_queues = {}
 
 EMPTY = '.'
 WHITE = 'w'
@@ -167,7 +171,12 @@ def create_room():
             "winner": None,
             "last_move": None,
             "created": time.time(),
-            "connections": {}  # Novo: armazenar informações de conexão WebRTC
+            "connections": {}
+        }
+        signaling_queues[room_id] = {
+            'offers': deque(),
+            'answers': deque(),
+            'ice_candidates': deque()
         }
         logger.info(f"Sala criada: {room_id}")
     return jsonify({"room_id": room_id})
@@ -274,20 +283,24 @@ def move_multiplayer():
             "winner": room["winner"]
         })
 
-# Novas rotas para sinalização WebRTC (simplificadas)
+# Rotas para sinalização WebRTC
 @app.route('/api/webrtc/offer', methods=['POST'])
 def handle_offer():
     data = request.json
     room_id = data.get("room_id")
     offer = data.get("offer")
+    player_id = data.get("player_id")
     
     with room_lock:
-        if room_id not in rooms:
+        if room_id not in signaling_queues:
             return jsonify({"error": "Sala não encontrada"}), 404
         
-        # Em uma implementação real, você armazenaria a oferta e a enviaria para o outro jogador
-        # Esta é uma implementação simplificada
-        logger.info(f"Oferta WebRTC recebida para sala {room_id}")
+        logger.info(f"Oferta WebRTC recebida para sala {room_id} do jogador {player_id}")
+        signaling_queues[room_id]['offers'].append({
+            'player_id': player_id,
+            'offer': offer
+        })
+        
         return jsonify({"success": True})
 
 @app.route('/api/webrtc/answer', methods=['POST'])
@@ -295,13 +308,18 @@ def handle_answer():
     data = request.json
     room_id = data.get("room_id")
     answer = data.get("answer")
+    player_id = data.get("player_id")
     
     with room_lock:
-        if room_id not in rooms:
+        if room_id not in signaling_queues:
             return jsonify({"error": "Sala não encontrada"}), 404
         
-        # Em uma implementação real, você armazenaria a resposta e a enviaria para o outro jogador
-        logger.info(f"Resposta WebRTC recebida para sala {room_id}")
+        logger.info(f"Resposta WebRTC recebida para sala {room_id} do jogador {player_id}")
+        signaling_queues[room_id]['answers'].append({
+            'player_id': player_id,
+            'answer': answer
+        })
+        
         return jsonify({"success": True})
 
 @app.route('/api/webrtc/ice-candidate', methods=['POST'])
@@ -309,14 +327,55 @@ def handle_ice_candidate():
     data = request.json
     room_id = data.get("room_id")
     candidate = data.get("candidate")
+    player_id = data.get("player_id")
     
     with room_lock:
-        if room_id not in rooms:
+        if room_id not in signaling_queues:
             return jsonify({"error": "Sala não encontrada"}), 404
         
-        # Em uma implementação real, você armazenaria o candidato ICE e o enviaria para o outro jogador
-        logger.info(f"Candidato ICE recebido para sala {room_id}")
+        logger.info(f"Candidato ICE recebido para sala {room_id} do jogador {player_id}")
+        signaling_queues[room_id]['ice_candidates'].append({
+            'player_id': player_id,
+            'candidate': candidate
+        })
+        
         return jsonify({"success": True})
+
+@app.route('/api/webrtc/get-offer/<room_id>', methods=['GET'])
+def get_offer(room_id):
+    with room_lock:
+        if room_id not in signaling_queues:
+            return jsonify({"error": "Sala não encontrada"}), 404
+        
+        if signaling_queues[room_id]['offers']:
+            offer = signaling_queues[room_id]['offers'].popleft()
+            return jsonify({"offer": offer, "exists": True})
+        
+        return jsonify({"exists": False})
+
+@app.route('/api/webrtc/get-answer/<room_id>', methods=['GET'])
+def get_answer(room_id):
+    with room_lock:
+        if room_id not in signaling_queues:
+            return jsonify({"error": "Sala não encontrada"}), 404
+        
+        if signaling_queues[room_id]['answers']:
+            answer = signaling_queues[room_id]['answers'].popleft()
+            return jsonify({"answer": answer, "exists": True})
+        
+        return jsonify({"exists": False})
+
+@app.route('/api/webrtc/get-ice-candidate/<room_id>', methods=['GET'])
+def get_ice_candidate(room_id):
+    with room_lock:
+        if room_id not in signaling_queues:
+            return jsonify({"error": "Sala não encontrada"}), 404
+        
+        if signaling_queues[room_id]['ice_candidates']:
+            candidate = signaling_queues[room_id]['ice_candidates'].popleft()
+            return jsonify({"candidate": candidate, "exists": True})
+        
+        return jsonify({"exists": False})
 
 # Servir index.html e arquivos estáticos
 from flask import send_from_directory

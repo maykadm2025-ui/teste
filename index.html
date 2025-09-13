@@ -360,8 +360,8 @@
     }
     
     @keyframes your-turn-glow {
-      from { box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
-      to { box-shadow: 0 0 40px rgba(0, 255, 136, 0.6); }
+      from { box-shadow: 极速飞艇开奖结果 0 0 20px rgba(0, 255, 136, 0.3); }
+      to { box-shadow: 0 0 40px rgba(0, 255, 136, 极速飞艇开奖结果 0.6); }
     }
     
     .opponent-turn {
@@ -406,7 +406,7 @@
       border-radius: 15px;
       overflow: hidden;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 极速飞艇开奖结果 0, 0.5);
       position: relative;
     }
     
@@ -434,7 +434,7 @@
       
       #board {
         grid-template-columns: repeat(8, 60px);
-        grid-template-rows: repeat(8, 60px);
+        grid-template-rows: repeat(8, 极速飞艇开奖结果 60px);
         padding: 15px;
       }
       
@@ -579,6 +579,7 @@
     let currentTurn = null;
     let currentBoard = null;
     let pollingInterval = null;
+    let signalingInterval = null;
     
     // Variáveis para WebRTC
     let localStream = null;
@@ -586,8 +587,9 @@
     let peerConnection = null;
     let isAudioEnabled = false;
     let isVideoEnabled = false;
+    let playerId = Math.random().toString(36).substring(2, 10); // ID único para o jogador
     
-    // Configuração do servidor de sinalização (usando o mesmo servidor Flask)
+    // Configuração do servidor de sinalização
     const configuration = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -672,7 +674,7 @@
         try {
           const res = await fetch(`${API}/move_multiplayer`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "极速飞艇开奖结果 Content-Type": "application/json" },
             body: JSON.stringify({ 
               room_id: roomId, 
               player: player, 
@@ -692,6 +694,7 @@
             
             if (data.winner) {
               clearInterval(pollingInterval);
+              clearInterval(signalingInterval);
               alert(`Fim de jogo! Vencedor: ${data.winner === player ? "Você" : "Oponente"}`);
             }
           } else {
@@ -724,6 +727,9 @@
         
         // Inicia o polling para verificar se outro jogador entrou
         startPolling();
+        
+        // Inicia a sinalização WebRTC
+        startSignaling();
       } catch (err) {
         console.error("Erro ao criar sala:", err);
         alert("Erro ao criar sala");
@@ -747,13 +753,16 @@
         
         if (res.ok) {
           document.getElementById("room-info").style.display = "block";
-          document.getElementById("room-info").innerHTML = `Entrou na sala ${roomId} como jogador Preto.`;
+          document.getElementById("room-info").innerHTML = `Entrou na sala ${room极速飞艇开奖结果 Id} como jogador Preto.`;
           
           // Mostrar controles de comunicação
           document.getElementById("communication-controls").style.display = "flex";
           
           // Inicia o polling para atualizar o estado do jogo
           startPolling();
+          
+          // Inicia a sinalização WebRTC
+          startSignaling();
         } else {
           const errorData = await res.json();
           alert(errorData.error || "Erro ao entrar na sala");
@@ -796,6 +805,7 @@
               
               if (data.winner) {
                 clearInterval(pollingInterval);
+                clearInterval(signalingInterval);
                 alert(`Fim de jogo! Vencedor: ${data.winner === player ? "Você" : "Oponente"}`);
               }
             }
@@ -807,6 +817,139 @@
     }
 
     // ========== FUNÇÕES DE COMUNICAÇÃO (WebRTC) ==========
+    
+    // Iniciar sinalização WebRTC
+    function startSignaling() {
+      if (signalingInterval) {
+        clearInterval(signalingInterval);
+      }
+      
+      signalingInterval = setInterval(async () => {
+        if (!roomId) return;
+        
+        try {
+          // Verificar se há ofertas, respostas ou candidatos ICE
+          await checkForOffers();
+          await checkForAnswers();
+          await checkForIceCandidates();
+        } catch (err) {
+          console.error("Erro na sinalização:", err);
+        }
+      }, 2000);
+    }
+    
+    // Verificar se há ofertas WebRTC
+    async function checkForOffers() {
+      if (!peerConnection) {
+        createPeerConnection();
+      }
+      
+      const res = await fetch(`${API}/webrtc/get-offer/${roomId}`);
+      const data = await res.json();
+      
+      if (data.exists && data.offer.player_id !== playerId) {
+        // Processar oferta recebida
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer.offer));
+        
+        // Criar resposta
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        
+        // Enviar resposta
+        await fetch(`${API}/webrtc/answer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            room_id: roomId,
+            player_id: playerId,
+            answer: answer
+          })
+        });
+      }
+    }
+    
+    // Verificar se há respostas WebRTC
+    async function checkForAnswers() {
+      if (!peerConnection || peerConnection.signalingState !== "have-local-offer") return;
+      
+      const res = await fetch(`${API}/webrtc/get-answer/${roomId}`);
+      const data = await res.json();
+      
+      if (data.exists && data.answer.player_id !== playerId) {
+        // Processar resposta recebida
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer.answer));
+      }
+    }
+    
+    // Verificar se há candidatos ICE
+    async function checkForIceCandidates() {
+      const res = await fetch(`${API}/webrtc/get-ice-candidate/${roomId}`);
+      const data = await res.json();
+      
+      if (data.exists && data.candidate.player_id !== playerId) {
+        // Processar candidato ICE recebido
+        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate.candidate));
+      }
+    }
+    
+    // Criar conexão peer-to-peer
+    function createPeerConnection() {
+      peerConnection = new RTCPeerConnection(configuration);
+      
+      // Manipular stream remota
+      peerConnection.ontrack = (event) => {
+        const remoteVideo = document.getElementById('remote-video');
+        remoteVideo.srcObject = event.streams[0];
+        remoteStream = event.streams[0];
+      };
+      
+      // Manipular candidatos ICE
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          // Enviar candidato ICE para o servidor
+          fetch(`${API}/webrtc/ice-candidate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              room_id: roomId,
+              player_id: playerId,
+              candidate: event.candidate
+            })
+          });
+        }
+      };
+      
+      // Se já temos um stream local, adicioná-lo à conexão
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStream);
+        });
+      }
+      
+      // Se somos o criador da sala, criar uma oferta
+      if (player === "w") {
+        createOffer();
+      }
+    }
+    
+    // Criar oferta WebRTC
+    async function createOffer() {
+      if (!peerConnection) return;
+      
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      
+      // Enviar oferta para o servidor
+      await fetch(`${API}/webrtc/offer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          room_id: roomId,
+          player_id: playerId,
+          offer: offer
+        })
+      });
+    }
     
     // Iniciar mídia local (áudio e vídeo)
     async function startLocalMedia() {
@@ -824,8 +967,17 @@
           document.getElementById('video-container').style.display = 'flex';
         }
         
-        // Iniciar conexão WebRTC
-        createPeerConnection();
+        // Adicionar stream à conexão WebRTC se existir
+        if (peerConnection) {
+          localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+          });
+          
+          // Se somos o criador da sala, criar uma nova oferta
+          if (player === "w") {
+            createOffer();
+          }
+        }
       } catch (err) {
         console.error('Erro ao acessar mídia:', err);
         alert('Não foi possível acessar a câmera/microfone. Verifique as permissões.');
@@ -846,34 +998,6 @@
       if (!isVideoEnabled) {
         document.getElementById('video-container').style.display = 'none';
       }
-    }
-    
-    // Criar conexão peer-to-peer
-    function createPeerConnection() {
-      peerConnection = new RTCPeerConnection(configuration);
-      
-      // Adicionar stream local à conexão
-      if (localStream) {
-        localStream.getTracks().forEach(track => {
-          peerConnection.addTrack(track, localStream);
-        });
-      }
-      
-      // Manipular stream remota
-      peerConnection.ontrack = (event) => {
-        const remoteVideo = document.getElementById('remote-video');
-        remoteVideo.srcObject = event.streams[0];
-        remoteStream = event.streams[0];
-      };
-      
-      // Manipular candidatos ICE
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          // Enviar candidato ICE para o servidor de sinalização
-          // (implementação simplificada - em produção use WebSockets)
-          console.log('Novo candidato ICE:', event.candidate);
-        }
-      };
     }
     
     // Alternar áudio
