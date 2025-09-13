@@ -69,6 +69,15 @@
       margin: 10px;
       font-weight: bold;
     }
+    .waiting {
+      color: #ff9900;
+    }
+    .your-turn {
+      color: green;
+    }
+    .opponent-turn {
+      color: red;
+    }
   </style>
 </head>
 <body>
@@ -90,9 +99,11 @@
     const PUBLIC_URL = window.location.origin;
 
     let roomId = null;
-    let player = null;  // "w" ou "b"
+    let player = null;
     let selected = null;
     let currentTurn = null;
+    let currentBoard = null;
+    let pollingInterval = null;
 
     // Renderiza o tabuleiro
     function renderBoard(board) {
@@ -128,20 +139,26 @@
       updateStatus();
     }
 
-    // Atualiza o status do jogo (vez do jogador, etc)
+    // Atualiza o status do jogo
     function updateStatus() {
       const statusDiv = document.getElementById("status");
-      if (!roomId || !currentTurn) {
+      if (!roomId) {
         statusDiv.innerHTML = "";
+        return;
+      }
+      
+      if (!currentTurn) {
+        statusDiv.innerHTML = "Carregando...";
+        statusDiv.className = "waiting";
         return;
       }
       
       if (currentTurn === player) {
         statusDiv.innerHTML = "Sua vez!";
-        statusDiv.style.color = "green";
+        statusDiv.className = "your-turn";
       } else {
         statusDiv.innerHTML = "Vez do oponente...";
-        statusDiv.style.color = "red";
+        statusDiv.className = "opponent-turn";
       }
     }
 
@@ -156,7 +173,7 @@
       // Se não há peça selecionada e clicou em uma peça sua
       if (!selected && piece !== "." && piece.toLowerCase() === player) {
         selected = { from: [r, c] };
-        renderBoard(currentBoard); // Re-renderiza para destacar a seleção
+        renderBoard(currentBoard);
       } 
       // Se já tem uma peça selecionada e clicou em outra célula
       else if (selected) {
@@ -178,12 +195,13 @@
           
           const data = await res.json();
           if (res.ok) {
-            // Atualiza o tabuleiro com a resposta
+            // Atualiza o estado do jogo
             currentBoard = data.board;
             currentTurn = data.turn;
             renderBoard(data.board);
             
             if (data.winner) {
+              clearInterval(pollingInterval);
               alert(`Fim de jogo! Vencedor: ${data.winner === player ? "Você" : "Oponente"}`);
             }
           } else {
@@ -198,9 +216,6 @@
       }
     }
 
-    // Variável para manter o estado atual do tabuleiro
-    let currentBoard = null;
-
     // Criar sala
     document.getElementById("create-room").onclick = async () => {
       try {
@@ -209,19 +224,13 @@
         
         roomId = data.room_id;
         player = "w"; // quem cria é branco
-        currentTurn = "w"; // primeiro turno é das brancas
         
         document.getElementById("room-info").style.display = "block";
         document.getElementById("room-info").innerHTML =
           `Sala criada! Código: <b>${roomId}</b><br>Link: <a href="${PUBLIC_URL}/?room=${roomId}" target="_blank">${PUBLIC_URL}/?room=${roomId}</a>`;
         
-        // Inicia o tabuleiro
-        currentBoard = createBoard();
-        renderBoard(currentBoard);
-        
-        // Entra na sala como jogador branco
-        await joinRoom(roomId, player);
-        pollGameState();
+        // Inicia o polling para verificar se outro jogador entrou
+        startPolling();
       } catch (err) {
         console.error("Erro ao criar sala:", err);
         alert("Erro ao criar sala");
@@ -237,22 +246,6 @@
         roomId = code;
         player = "b"; // quem entra é preto
         
-        // Primeiro tenta entrar na sala
-        const joined = await joinRoom(roomId, player);
-        if (joined) {
-          document.getElementById("room-info").style.display = "block";
-          document.getElementById("room-info").innerHTML = `Entrou na sala ${roomId} como jogador Preto.`;
-          pollGameState();
-        }
-      } catch (err) {
-        console.error("Erro ao entrar na sala:", err);
-        alert("Erro ao entrar na sala");
-      }
-    };
-
-    // Função auxiliar para entrar na sala
-    async function joinRoom(roomId, player) {
-      try {
         const res = await fetch(`${API}/join_room`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -260,72 +253,61 @@
         });
         
         if (res.ok) {
-          return true;
+          document.getElementById("room-info").style.display = "block";
+          document.getElementById("room-info").innerHTML = `Entrou na sala ${roomId} como jogador Preto.`;
+          
+          // Inicia o polling para atualizar o estado do jogo
+          startPolling();
         } else {
-          const data = await res.json();
-          alert(data.error || "Erro ao entrar na sala");
-          return false;
+          const errorData = await res.json();
+          alert(errorData.error || "Erro ao entrar na sala");
         }
       } catch (err) {
-        throw err;
+        console.error("Erro ao entrar na sala:", err);
+        alert("Erro ao entrar na sala");
       }
-    }
+    };
 
-    // Criar tabuleiro inicial
-    function createBoard() {
-      const board = [];
-      for (let row = 0; row < 8; row++) {
-        const boardRow = [];
-        for (let col = 0; col < 8; col++) {
-          if ((row + col) % 2 === 1) {
-            if (row < 3) {
-              boardRow.push('b');
-            } else if (row > 4) {
-              boardRow.push('w');
-            } else {
-              boardRow.push('.');
-            }
-          } else {
-            boardRow.push('.');
-          }
-        }
-        board.push(boardRow);
+    // Iniciar polling para atualizar o estado do jogo
+    function startPolling() {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
       }
-      return board;
-    }
-
-    // Atualização periódica do estado do jogo
-    async function pollGameState() {
-      if (!roomId) return;
       
-      try {
-        const res = await fetch(`${API}/game_state`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ room_id: roomId })
-        });
+      pollingInterval = setInterval(async () => {
+        if (!roomId) return;
         
-        const data = await res.json();
-        if (res.ok) {
-          // Atualiza o estado do jogo
-          currentBoard = data.board;
-          currentTurn = data.turn;
+        try {
+          const res = await fetch(`${API}/game_state`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room_id: roomId })
+          });
           
-          renderBoard(data.board);
-          
-          if (data.winner) {
-            alert(`Fim de jogo! Vencedor: ${data.winner === player ? "Você" : "Oponente"}`);
-          } else {
-            // Continua polling
-            setTimeout(pollGameState, 1500);
+          const data = await res.json();
+          if (res.ok) {
+            // Se é a primeira vez que recebemos o estado, inicializa o tabuleiro
+            if (!currentBoard) {
+              currentBoard = data.board;
+              currentTurn = data.turn;
+              renderBoard(data.board);
+            } 
+            // Se o estado mudou (oponente fez uma jogada)
+            else if (JSON.stringify(currentBoard) !== JSON.stringify(data.board) || currentTurn !== data.turn) {
+              currentBoard = data.board;
+              currentTurn = data.turn;
+              renderBoard(data.board);
+              
+              if (data.winner) {
+                clearInterval(pollingInterval);
+                alert(`Fim de jogo! Vencedor: ${data.winner === player ? "Você" : "Oponente"}`);
+              }
+            }
           }
-        } else {
-          setTimeout(pollGameState, 2000);
+        } catch (err) {
+          console.error("Erro no polling:", err);
         }
-      } catch (err) {
-        console.error("Erro no polling:", err);
-        setTimeout(pollGameState, 2000);
-      }
+      }, 2000); // Verifica a cada 2 segundos
     }
 
     // Se abriu com ?room=xxxx
@@ -333,9 +315,6 @@
     if (urlParams.has("room")) {
       const roomCode = urlParams.get("room");
       document.getElementById("room-code").value = roomCode;
-      
-      // Se já tem um código na URL, preenche automaticamente
-      // mas não entra automaticamente para evitar problemas
     }
   </script>
 </body>

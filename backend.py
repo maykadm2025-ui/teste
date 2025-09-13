@@ -9,7 +9,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Estrutura para salas multiplayer
-rooms = {}  # room_id: {"board": ..., "turn": ..., "players": [player1, player2], "winner": ..., "last_move": ..., "created": ...}
+rooms = {}
 room_lock = Lock()
 
 EMPTY = '.'
@@ -57,7 +57,6 @@ def get_piece_moves(board, r, c, piece, must_capture=False, path=None, captured=
         directions.append((1, -1))
         directions.append((1, 1))
     if piece in [WHITE_KING, BLACK_KING]:
-        # Dama pode ir em todas as casas na diagonal
         for dr, dc in [(-1,-1),(-1,1),(1,-1),(1,1)]:
             step = 1
             while True:
@@ -178,22 +177,20 @@ def join_room():
         
         room = rooms[room_id]
         
-        # Verifica se o jogador já está na sala
         if player in room["players"]:
             return jsonify({"error": "Jogador já entrou"}), 400
         
-        # Verifica se a sala está cheia
         if len(room["players"]) >= 2:
             return jsonify({"error": "Sala cheia"}), 400
         
-        # Adiciona o jogador à sala
         room["players"].append(player)
         
-        # Se for o segundo jogador, inicia o jogo
-        if len(room["players"]) == 2:
-            room["turn"] = WHITE  # As brancas começam
-        
-    return jsonify({"success": True, "board": room["board"], "turn": room["turn"]})
+        return jsonify({
+            "success": True, 
+            "board": room["board"], 
+            "turn": room["turn"], 
+            "winner": room["winner"]
+        })
 
 @app.route('/api/game_state', methods=['POST'])
 def game_state():
