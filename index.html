@@ -360,8 +360,8 @@
     }
     
     @keyframes your-turn-glow {
-      from { box-shadow: 极速飞艇开奖结果 0 0 20px rgba(0, 255, 136, 0.3); }
-      to { box-shadow: 0 0 40px rgba(0, 255, 136, 极速飞艇开奖结果 0.6); }
+      from { box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
+      to { box-shadow: 0 0 40px rgba(0, 255, 136, 0.6); }
     }
     
     .opponent-turn {
@@ -370,71 +370,13 @@
       border: 2px solid rgba(255, 107, 107, 0.3);
     }
     
-    /* Controles de comunicação */
-    #communication-controls {
-      display: none;
-      gap: 15px;
-      margin-top: 20px;
-    }
-    
-    .comm-btn {
-      padding: 12px 20px;
-      border-radius: 50px;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    
-    .comm-btn.active {
-      box-shadow: 0 0 20px rgba(0, 255, 136, 0.6);
-    }
-    
-    /* Área de vídeo */
-    #video-container {
-      display: none;
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 100;
-      gap: 15px;
-    }
-    
-    .video-wrapper {
-      width: 200px;
-      height: 150px;
-      border-radius: 15px;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-      background: rgba(0, 0, 极速飞艇开奖结果 0, 0.5);
-      position: relative;
-    }
-    
-    .video-wrapper video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    
-    .video-label {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 5px;
-      font-size: 12px;
-      text-align: center;
-    }
-    
     /* Responsividade */
     @media (max-width: 768px) {
       h1 { font-size: 2.5rem; }
       
       #board {
         grid-template-columns: repeat(8, 60px);
-        grid-template-rows: repeat(8, 极速飞艇开奖结果 60px);
+        grid-template-rows: repeat(8, 60px);
         padding: 15px;
       }
       
@@ -457,11 +399,6 @@
         width: 100%;
         min-width: auto;
       }
-      
-      .video-wrapper {
-        width: 150px;
-        height: 120px;
-      }
     }
     
     @media (max-width: 480px) {
@@ -480,16 +417,6 @@
       .piece {
         width: 32px;
         height: 32px;
-      }
-      
-      #video-container {
-        bottom: 10px;
-        right: 10px;
-      }
-      
-      .video-wrapper {
-        width: 120px;
-        height: 90px;
       }
     }
     
@@ -547,26 +474,6 @@
     <div id="status"></div>
 
     <div id="board"></div>
-    
-    <div id="communication-controls">
-      <button id="toggle-audio" class="comm-btn">
-        <span>🎤</span> Áudio
-      </button>
-      <button id="toggle-video" class="comm-btn">
-        <span>📹</span> Vídeo
-      </button>
-    </div>
-  </div>
-  
-  <div id="video-container">
-    <div class="video-wrapper">
-      <video id="local-video" autoplay muted></video>
-      <div class="video-label">Você</div>
-    </div>
-    <div class="video-wrapper">
-      <video id="remote-video" autoplay></video>
-      <div class="video-label">Oponente</div>
-    </div>
   </div>
 
   <script>
@@ -579,23 +486,6 @@
     let currentTurn = null;
     let currentBoard = null;
     let pollingInterval = null;
-    let signalingInterval = null;
-    
-    // Variáveis para WebRTC
-    let localStream = null;
-    let remoteStream = null;
-    let peerConnection = null;
-    let isAudioEnabled = false;
-    let isVideoEnabled = false;
-    let playerId = Math.random().toString(36).substring(2, 10); // ID único para o jogador
-    
-    // Configuração do servidor de sinalização
-    const configuration = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    };
 
     // Renderiza o tabuleiro
     function renderBoard(board) {
@@ -674,7 +564,7 @@
         try {
           const res = await fetch(`${API}/move_multiplayer`, {
             method: "POST",
-            headers: { "极速飞艇开奖结果 Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ 
               room_id: roomId, 
               player: player, 
@@ -694,7 +584,6 @@
             
             if (data.winner) {
               clearInterval(pollingInterval);
-              clearInterval(signalingInterval);
               alert(`Fim de jogo! Vencedor: ${data.winner === player ? "Você" : "Oponente"}`);
             }
           } else {
@@ -722,14 +611,8 @@
         document.getElementById("room-info").innerHTML =
           `Sala criada! Código: <b>${roomId}</b><br>Link: <a href="${PUBLIC_URL}/?room=${roomId}" target="_blank">${PUBLIC_URL}/?room=${roomId}</a>`;
         
-        // Mostrar controles de comunicação
-        document.getElementById("communication-controls").style.display = "flex";
-        
         // Inicia o polling para verificar se outro jogador entrou
         startPolling();
-        
-        // Inicia a sinalização WebRTC
-        startSignaling();
       } catch (err) {
         console.error("Erro ao criar sala:", err);
         alert("Erro ao criar sala");
@@ -753,16 +636,10 @@
         
         if (res.ok) {
           document.getElementById("room-info").style.display = "block";
-          document.getElementById("room-info").innerHTML = `Entrou na sala ${room极速飞艇开奖结果 Id} como jogador Preto.`;
-          
-          // Mostrar controles de comunicação
-          document.getElementById("communication-controls").style.display = "flex";
+          document.getElementById("room-info").innerHTML = `Entrou na sala ${roomId} como jogador Preto.`;
           
           // Inicia o polling para atualizar o estado do jogo
           startPolling();
-          
-          // Inicia a sinalização WebRTC
-          startSignaling();
         } else {
           const errorData = await res.json();
           alert(errorData.error || "Erro ao entrar na sala");
@@ -805,7 +682,6 @@
               
               if (data.winner) {
                 clearInterval(pollingInterval);
-                clearInterval(signalingInterval);
                 alert(`Fim de jogo! Vencedor: ${data.winner === player ? "Você" : "Oponente"}`);
               }
             }
@@ -816,245 +692,12 @@
       }, 2000); // Verifica a cada 2 segundos
     }
 
-    // ========== FUNÇÕES DE COMUNICAÇÃO (WebRTC) ==========
-    
-    // Iniciar sinalização WebRTC
-    function startSignaling() {
-      if (signalingInterval) {
-        clearInterval(signalingInterval);
-      }
-      
-      signalingInterval = setInterval(async () => {
-        if (!roomId) return;
-        
-        try {
-          // Verificar se há ofertas, respostas ou candidatos ICE
-          await checkForOffers();
-          await checkForAnswers();
-          await checkForIceCandidates();
-        } catch (err) {
-          console.error("Erro na sinalização:", err);
-        }
-      }, 2000);
-    }
-    
-    // Verificar se há ofertas WebRTC
-    async function checkForOffers() {
-      if (!peerConnection) {
-        createPeerConnection();
-      }
-      
-      const res = await fetch(`${API}/webrtc/get-offer/${roomId}`);
-      const data = await res.json();
-      
-      if (data.exists && data.offer.player_id !== playerId) {
-        // Processar oferta recebida
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer.offer));
-        
-        // Criar resposta
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        
-        // Enviar resposta
-        await fetch(`${API}/webrtc/answer`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            room_id: roomId,
-            player_id: playerId,
-            answer: answer
-          })
-        });
-      }
-    }
-    
-    // Verificar se há respostas WebRTC
-    async function checkForAnswers() {
-      if (!peerConnection || peerConnection.signalingState !== "have-local-offer") return;
-      
-      const res = await fetch(`${API}/webrtc/get-answer/${roomId}`);
-      const data = await res.json();
-      
-      if (data.exists && data.answer.player_id !== playerId) {
-        // Processar resposta recebida
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer.answer));
-      }
-    }
-    
-    // Verificar se há candidatos ICE
-    async function checkForIceCandidates() {
-      const res = await fetch(`${API}/webrtc/get-ice-candidate/${roomId}`);
-      const data = await res.json();
-      
-      if (data.exists && data.candidate.player_id !== playerId) {
-        // Processar candidato ICE recebido
-        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate.candidate));
-      }
-    }
-    
-    // Criar conexão peer-to-peer
-    function createPeerConnection() {
-      peerConnection = new RTCPeerConnection(configuration);
-      
-      // Manipular stream remota
-      peerConnection.ontrack = (event) => {
-        const remoteVideo = document.getElementById('remote-video');
-        remoteVideo.srcObject = event.streams[0];
-        remoteStream = event.streams[0];
-      };
-      
-      // Manipular candidatos ICE
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          // Enviar candidato ICE para o servidor
-          fetch(`${API}/webrtc/ice-candidate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              room_id: roomId,
-              player_id: playerId,
-              candidate: event.candidate
-            })
-          });
-        }
-      };
-      
-      // Se já temos um stream local, adicioná-lo à conexão
-      if (localStream) {
-        localStream.getTracks().forEach(track => {
-          peerConnection.addTrack(track, localStream);
-        });
-      }
-      
-      // Se somos o criador da sala, criar uma oferta
-      if (player === "w") {
-        createOffer();
-      }
-    }
-    
-    // Criar oferta WebRTC
-    async function createOffer() {
-      if (!peerConnection) return;
-      
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      
-      // Enviar oferta para o servidor
-      await fetch(`${API}/webrtc/offer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          room_id: roomId,
-          player_id: playerId,
-          offer: offer
-        })
-      });
-    }
-    
-    // Iniciar mídia local (áudio e vídeo)
-    async function startLocalMedia() {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-          video: isVideoEnabled, 
-          audio: isAudioEnabled 
-        });
-        
-        const localVideo = document.getElementById('local-video');
-        localVideo.srcObject = localStream;
-        
-        // Mostrar container de vídeo se o vídeo estiver ativado
-        if (isVideoEnabled) {
-          document.getElementById('video-container').style.display = 'flex';
-        }
-        
-        // Adicionar stream à conexão WebRTC se existir
-        if (peerConnection) {
-          localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-          });
-          
-          // Se somos o criador da sala, criar uma nova oferta
-          if (player === "w") {
-            createOffer();
-          }
-        }
-      } catch (err) {
-        console.error('Erro ao acessar mídia:', err);
-        alert('Não foi possível acessar a câmera/microfone. Verifique as permissões.');
-      }
-    }
-    
-    // Parar mídia local
-    function stopLocalMedia() {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-      }
-      
-      const localVideo = document.getElementById('local-video');
-      localVideo.srcObject = null;
-      
-      // Esconder container de vídeo se não há vídeo ativo
-      if (!isVideoEnabled) {
-        document.getElementById('video-container').style.display = 'none';
-      }
-    }
-    
-    // Alternar áudio
-    document.getElementById('toggle-audio').onclick = async () => {
-      isAudioEnabled = !isAudioEnabled;
-      
-      if (localStream) {
-        localStream.getAudioTracks().forEach(track => {
-          track.enabled = isAudioEnabled;
-        });
-      } else if (isAudioEnabled || isVideoEnabled) {
-        await startLocalMedia();
-      }
-      
-      document.getElementById('toggle-audio').classList.toggle('active', isAudioEnabled);
-    };
-    
-    // Alternar vídeo
-    document.getElementById('toggle-video').onclick = async () => {
-      isVideoEnabled = !isVideoEnabled;
-      
-      if (localStream) {
-        localStream.getVideoTracks().forEach(track => {
-          track.enabled = isVideoEnabled;
-        });
-        
-        // Mostrar/ocultar container de vídeo
-        document.getElementById('video-container').style.display = isVideoEnabled ? 'flex' : 'none';
-      } else if (isAudioEnabled || isVideoEnabled) {
-        await startLocalMedia();
-      }
-      
-      document.getElementById('toggle-video').classList.toggle('active', isVideoEnabled);
-    };
-
     // Se abriu com ?room=xxxx
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has("room")) {
       const roomCode = urlParams.get("room");
       document.getElementById("room-code").value = roomCode;
     }
-    
-    // Criar partículas de fundo
-    function createParticles() {
-      const particlesContainer = document.getElementById('particles');
-      for (let i = 0; i < 50; i++) {
-        const particle = document.createElement('div');
-        particle.classList.add('particle');
-        particle.style.left = `${Math.random() * 100}%`;
-        particle.style.animationDelay = `${Math.random() * 6}s`;
-        particle.style.animationDuration = `${5 + Math.random() * 5}s`;
-        particlesContainer.appendChild(particle);
-      }
-    }
-    
-    // Inicializar partículas
-    createParticles();
   </script>
 </body>
 </html>
