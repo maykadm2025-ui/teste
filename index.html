@@ -14,7 +14,7 @@
     h1 {
       color: #333;
     }
-    #game {
+    #game, #room-container {
       margin: 20px auto;
       padding: 20px;
       background: white;
@@ -53,21 +53,31 @@
 <body>
   <h1>Jogo Multiplayer</h1>
 
+  <!-- Tela inicial -->
   <div id="game">
     <button id="create-room">Criar Sala</button>
     <br>
     <input type="text" id="room-code" placeholder="Código da sala">
     <button id="join-room">Entrar na Sala</button>
-
     <div id="room-link"></div>
   </div>
 
-  <script>
-    // --- Configuração API ---
-    const API = "https://teste-3-72d1.onrender.com/api";
+  <!-- Tela da sala -->
+  <div id="room-container" style="display: none;">
+    <h2 id="room-title"></h2>
+    <p>Bem-vindo à sala! 🎮</p>
+    <!-- Aqui futuramente entra o jogo -->
+  </div>
 
-    // Usar sempre o domínio atual para gerar link de convite
+  <script>
+    const API = '/api';
     const PUBLIC_URL = window.location.origin;
+
+    // Função para pegar parâmetros da URL
+    function getRoomFromURL() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("room");
+    }
 
     // Criar sala
     document.getElementById('create-room').onclick = async () => {
@@ -78,7 +88,7 @@
         const roomLink = `${PUBLIC_URL}/index.html?room=${data.room}`;
         const div = document.getElementById('room-link');
         div.style.display = 'block';
-        div.innerHTML = `Sala criada!<br>Código: <b>${data.room}</b><br><a href="${roomLink}" target="_blank">${roomLink}</a>`;
+        div.innerHTML = `Sala criada!<br><a href="${roomLink}" target="_blank">${roomLink}</a>`;
       } catch (err) {
         console.error(err);
         alert('Erro ao criar sala');
@@ -96,7 +106,7 @@
       try {
         const res = await fetch(`${API}/join_room/${code}`, { method: 'POST' });
         if (res.ok) {
-          alert(`Você entrou na sala ${code}`);
+          window.location.href = `${PUBLIC_URL}/index.html?room=${code}`;
         } else {
           alert('Sala não encontrada!');
         }
@@ -106,14 +116,13 @@
       }
     };
 
-    // Se o link já vier com ?room=xxxx, preenche o input automaticamente
-    window.addEventListener("DOMContentLoaded", () => {
-      const params = new URLSearchParams(window.location.search);
-      const room = params.get("room");
-      if (room) {
-        document.getElementById("room-code").value = room;
-      }
-    });
+    // Se a URL já tem ?room=xxxx → mostrar a sala
+    const currentRoom = getRoomFromURL();
+    if (currentRoom) {
+      document.getElementById('game').style.display = "none";
+      document.getElementById('room-container').style.display = "block";
+      document.getElementById('room-title').innerText = `Sala: ${currentRoom}`;
+    }
   </script>
 </body>
 </html>
