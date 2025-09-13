@@ -3,7 +3,7 @@ from flask_cors import CORS
 import copy
 import uuid
 from threading import Lock
-
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -44,7 +44,6 @@ def is_king(piece):
     return piece in [WHITE_KING, BLACK_KING]
 
 def get_piece_moves(board, r, c, piece, must_capture=False, path=None, captured=None):
-    # path: lista de casas visitadas, captured: lista de capturas feitas
     if path is None:
         path = [(r, c)]
     if captured is None:
@@ -60,7 +59,6 @@ def get_piece_moves(board, r, c, piece, must_capture=False, path=None, captured=
     if piece in [WHITE_KING, BLACK_KING]:
         # Dama pode ir em todas as casas na diagonal
         for dr, dc in [(-1,-1),(-1,1),(1,-1),(1,1)]:
-            # Movimento simples
             step = 1
             while True:
                 nr, nc = r + dr*step, c + dc*step
@@ -70,13 +68,11 @@ def get_piece_moves(board, r, c, piece, must_capture=False, path=None, captured=
                             moves.append({'from': (r, c), 'to': (nr, nc), 'capture': None})
                         step += 1
                     elif board[nr][nc].lower() != piece.lower() and board[nr][nc] != EMPTY:
-                        # Possível captura à distância
                         step2 = step + 1
                         while True:
                             nr2, nc2 = r + dr*step2, c + dc*step2
                             if 0 <= nr2 < 8 and 0 <= nc2 < 8 and board[nr2][nc2] == EMPTY:
                                 if (nr, nc) not in captured:
-                                    # Recursivo para múltiplas capturas
                                     new_board = copy.deepcopy(board)
                                     new_board[r][c] = EMPTY
                                     new_board[nr][nc] = EMPTY
@@ -105,7 +101,6 @@ def get_piece_moves(board, r, c, piece, must_capture=False, path=None, captured=
         # Captura
         nr2, nc2 = r + 2*dr, c + 2*dc
         if 0 <= nr2 < 8 and 0 <= nc2 < 8 and board[nr][nc] != EMPTY and board[nr][nc].lower() != piece.lower() and board[nr2][nc2] == EMPTY and (nr, nc) not in captured:
-            # Recursivo para múltiplas capturas
             new_board = copy.deepcopy(board)
             new_board[r][c] = EMPTY
             new_board[nr][nc] = EMPTY
@@ -129,7 +124,6 @@ def valid_moves(board, player):
     # Regra: se houver captura, só pode capturar
     captures = [m for m in moves if m['capture']]
     if captures:
-        # Apenas movimentos com o maior número de capturas são válidos
         max_captures = max(len(m['capture']) if isinstance(m['capture'], list) else 1 for m in captures)
         return [m for m in captures if len(m['capture']) == max_captures]
     return moves
@@ -155,21 +149,6 @@ def move_piece(board, move):
             board[cr][cc] = EMPTY
     return board
 
-def board_to_dict(board):
-    return {'board': board}
-
-# IA simples: escolhe o primeiro movimento válido
-
-def ai_move(board, player):
-    moves = valid_moves(board, player)
-    if not moves:
-        return None, board
-    move = moves[0]
-    new_board = copy.deepcopy(board)
-    move_piece(new_board, move)
-    return move, new_board
-
-
 # --- API multiplayer ---
 
 @app.route('/api/create_room', methods=['POST'])
@@ -182,7 +161,8 @@ def create_room():
             "turn": WHITE,
             "players": [],
             "winner": None,
-            "last_move": None
+            "last_move": None,
+            "created": time.time()
         }
     return jsonify({"room_id": room_id})
 
@@ -191,25 +171,39 @@ def join_room():
     data = request.json
     room_id = data.get("room_id")
     player = data.get("player")
+    
     with room_lock:
         if room_id not in rooms:
             return jsonify({"error": "Sala não encontrada"}), 404
-        if player not in [WHITE, BLACK]:
-            return jsonify({"error": "Cor inválida"}), 400
-        if player in rooms[room_id]["players"]:
+        
+        room = rooms[room_id]
+        
+        # Verifica se o jogador já está na sala
+        if player in room["players"]:
             return jsonify({"error": "Jogador já entrou"}), 400
-        if len(rooms[room_id]["players"]) >= 2:
+        
+        # Verifica se a sala está cheia
+        if len(room["players"]) >= 2:
             return jsonify({"error": "Sala cheia"}), 400
-        rooms[room_id]["players"].append(player)
-    return jsonify({"success": True})
+        
+        # Adiciona o jogador à sala
+        room["players"].append(player)
+        
+        # Se for o segundo jogador, inicia o jogo
+        if len(room["players"]) == 2:
+            room["turn"] = WHITE  # As brancas começam
+        
+    return jsonify({"success": True, "board": room["board"], "turn": room["turn"]})
 
 @app.route('/api/game_state', methods=['POST'])
 def game_state():
     data = request.json
     room_id = data.get("room_id")
+    
     with room_lock:
         if room_id not in rooms:
             return jsonify({"error": "Sala não encontrada"}), 404
+        
         room = rooms[room_id]
         return jsonify({
             "board": room["board"],
@@ -222,26 +216,44 @@ def game_state():
 def move_multiplayer():
     data = request.json
     room_id = data.get("room_id")
-    move = data.get("move")
+    move_data = data.get("move")
     player = data.get("player")
+    
     with room_lock:
         if room_id not in rooms:
             return jsonify({"error": "Sala não encontrada"}), 404
+        
         room = rooms[room_id]
+        
         if room["winner"]:
             return jsonify({"error": "Jogo já finalizado"}), 400
+        
         if player != room["turn"]:
             return jsonify({"error": "Não é sua vez"}), 400
+        
+        # Converte as coordenadas para inteiros
+        from_row, from_col = move_data['from']
+        to_row, to_col = move_data['to']
+        move_data['from'] = (int(from_row), int(from_col))
+        move_data['to'] = (int(to_row), int(to_col))
+        
+        # Encontra o movimento válido correspondente
         moves = valid_moves(room["board"], player)
-        found = None
+        found_move = None
+        
         for m in moves:
-            if m['from'] == tuple(move['from']) and m['to'] == tuple(move['to']):
-                found = m
+            if (m['from'] == move_data['from'] and 
+                m['to'] == move_data['to']):
+                found_move = m
                 break
-        if not found:
+        
+        if not found_move:
             return jsonify({'error': 'Movimento inválido'}), 400
-        move_piece(room["board"], found)
-        room["last_move"] = found
+        
+        # Executa o movimento
+        move_piece(room["board"], found_move)
+        room["last_move"] = found_move
+        
         # Verifica vitória
         opponent = get_opponent(player)
         if not valid_moves(room["board"], opponent):
@@ -249,41 +261,12 @@ def move_multiplayer():
             room["turn"] = None
         else:
             room["turn"] = opponent
-        return jsonify({"board": room["board"], "turn": room["turn"], "winner": room["winner"]})
-
-@app.route('/api/new_game', methods=['POST'])
-def new_game():
-    board = create_board()
-    return jsonify({'board': board, 'turn': WHITE, 'winner': None})
-
-@app.route('/api/move', methods=['POST'])
-def player_move():
-    data = request.json
-    board = data['board']
-    move = data['move']
-    player = data['player']
-    moves = valid_moves(board, player)
-    # Verifica se o movimento é válido
-    found = None
-    for m in moves:
-        if m['from'] == tuple(move['from']) and m['to'] == tuple(move['to']):
-            found = m
-            break
-    if not found:
-        return jsonify({'error': 'Movimento inválido'}), 400
-    move_piece(board, found)
-    # Verifica vitória
-    if not valid_moves(board, get_opponent(player)):
-        return jsonify({'board': board, 'turn': None, 'winner': player})
-    # Movimento da IA
-    ai_m, board = ai_move(board, get_opponent(player))
-    if ai_m:
-        if not valid_moves(board, player):
-            return jsonify({'board': board, 'turn': None, 'winner': get_opponent(player)})
-        return jsonify({'board': board, 'turn': player, 'winner': None})
-    else:
-        return jsonify({'board': board, 'turn': None, 'winner': player})
-
+        
+        return jsonify({
+            "board": room["board"], 
+            "turn": room["turn"], 
+            "winner": room["winner"]
+        })
 
 # Servir index.html e arquivos estáticos
 from flask import send_from_directory
