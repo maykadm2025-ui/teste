@@ -3,44 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jogo Multiplayer</title>
+  <title>Damas Multiplayer</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      margin: 20px;
       background: #f0f0f0;
-    }
-    h1 {
-      color: #333;
-    }
-    #game {
-      margin: 20px auto;
+      margin: 0;
       padding: 20px;
-      background: white;
-      border: 2px solid #ccc;
-      border-radius: 10px;
-      width: 350px;
     }
-    button {
-      margin: 10px;
-      padding: 10px 20px;
-      border: none;
-      border-radius: 5px;
-      background: #4CAF50;
-      color: white;
-      cursor: pointer;
+    h1 { color: #333; }
+    #menu { margin-bottom: 20px; }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(8, 60px);
+      grid-template-rows: repeat(8, 60px);
+      gap: 0;
+      margin: 20px auto;
+      width: 480px;
+      height: 480px;
+      border: 2px solid #333;
+      display: none;
     }
-    button:hover {
-      background: #45a049;
+    .cell {
+      width: 60px;
+      height: 60px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
-    input {
-      padding: 8px;
-      margin: 5px;
-      border-radius: 5px;
-      border: 1px solid #ccc;
+    .dark { background: #769656; }
+    .light { background: #eeeed2; }
+    .piece {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
     }
-    #room-link {
+    .w { background: white; border: 2px solid #555; }
+    .b { background: black; }
+    .W { background: white; border: 3px solid gold; }
+    .B { background: black; border: 3px solid gold; }
+    #room-info {
       margin-top: 15px;
       padding: 10px;
       background: #e7f3fe;
@@ -48,112 +51,157 @@
       border-radius: 5px;
       display: none;
     }
-    #status {
-      margin-top: 15px;
-      font-weight: bold;
+    button {
+      padding: 8px 15px;
+      margin: 5px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background: #4CAF50;
+      color: white;
     }
+    button:hover { background: #45a049; }
   </style>
 </head>
 <body>
-  <h1>Jogo Multiplayer</h1>
+  <h1>Damas Multiplayer</h1>
 
-  <div id="game">
+  <div id="menu">
     <button id="create-room">Criar Sala</button>
-    <br>
     <input type="text" id="room-code" placeholder="Código da sala">
-    <select id="player">
-      <option value="w">Brancas</option>
-      <option value="b">Pretas</option>
-    </select>
-    <button id="join-room">Entrar na Sala</button>
-
-    <div id="room-link"></div>
-    <div id="status"></div>
+    <button id="join-room">Entrar</button>
   </div>
 
+  <div id="room-info"></div>
+
+  <div id="board"></div>
+
   <script>
-    const API = '/api';
+    const API = "/api";
     const PUBLIC_URL = window.location.origin;
 
-    let currentRoom = null;
-    let currentPlayer = null;
+    let roomId = null;
+    let player = null;  // "w" ou "b"
+    let selected = null;
+
+    // Renderiza o tabuleiro
+    function renderBoard(board) {
+      const boardDiv = document.getElementById("board");
+      boardDiv.innerHTML = "";
+      boardDiv.style.display = "grid";
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const cell = document.createElement("div");
+          cell.classList.add("cell", (r + c) % 2 === 0 ? "light" : "dark");
+          cell.dataset.row = r;
+          cell.dataset.col = c;
+          const piece = board[r][c];
+          if (piece !== ".") {
+            const pieceDiv = document.createElement("div");
+            pieceDiv.classList.add("piece", piece);
+            cell.appendChild(pieceDiv);
+          }
+          cell.onclick = () => onCellClick(r, c, piece);
+          boardDiv.appendChild(cell);
+        }
+      }
+    }
+
+    // Clique no tabuleiro
+    async function onCellClick(r, c, piece) {
+      if (!roomId || !player) return;
+      if (!selected && piece.toLowerCase() === player) {
+        selected = { from: [r, c] };
+      } else if (selected) {
+        selected.to = [r, c];
+        try {
+          const res = await fetch(`${API}/move_multiplayer`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room_id: roomId, player: player, move: selected })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            renderBoard(data.board);
+          } else {
+            alert(data.error || "Movimento inválido");
+          }
+        } catch (err) {
+          console.error(err);
+        }
+        selected = null;
+      }
+    }
 
     // Criar sala
-    document.getElementById('create-room').onclick = async () => {
+    document.getElementById("create-room").onclick = async () => {
       try {
-        const res = await fetch(`${API}/create_room`, { method: 'POST' });
+        const res = await fetch(`${API}/create_room`, { method: "POST" });
         const data = await res.json();
-
-        currentRoom = data.room_id;
-        const roomLink = `${PUBLIC_URL}/index.html?room_id=${currentRoom}`;
-        const div = document.getElementById('room-link');
-        div.style.display = 'block';
-        div.innerHTML = `Sala criada!<br><a href="${roomLink}" target="_blank">${roomLink}</a>`;
+        roomId = data.room_id;
+        player = "w"; // quem cria é branco
+        document.getElementById("room-info").style.display = "block";
+        document.getElementById("room-info").innerHTML =
+          `Sala criada! Código: <b>${roomId}</b><br>Link: <a href="${PUBLIC_URL}/index.html?room=${roomId}" target="_blank">${PUBLIC_URL}/index.html?room=${roomId}</a>`;
+        pollGameState();
       } catch (err) {
-        console.error(err);
-        alert('Erro ao criar sala');
+        alert("Erro ao criar sala");
       }
     };
 
-    // Entrar na sala
-    document.getElementById('join-room').onclick = async () => {
-      const code = document.getElementById('room-code').value.trim();
-      const player = document.getElementById('player').value;
-      if (!code) {
-        alert('Digite um código de sala!');
-        return;
-      }
-
+    // Entrar em sala
+    document.getElementById("join-room").onclick = async () => {
+      const code = document.getElementById("room-code").value.trim();
+      if (!code) return alert("Digite o código da sala!");
       try {
         const res = await fetch(`${API}/join_room`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room_id: code, player })
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ room_id: code, player: "b" })
         });
         const data = await res.json();
-
         if (res.ok) {
-          currentRoom = code;
-          currentPlayer = player;
-          document.getElementById('status').innerText =
-            `Você entrou na sala ${code} como ${player === 'w' ? 'Brancas' : 'Pretas'}`;
-          startPolling();
+          roomId = code;
+          player = "b";
+          document.getElementById("room-info").style.display = "block";
+          document.getElementById("room-info").innerHTML = `Entrou na sala ${roomId} como jogador Preto.`;
+          pollGameState();
         } else {
-          alert(data.error || 'Erro ao entrar na sala');
+          alert(data.error || "Erro ao entrar na sala");
         }
       } catch (err) {
-        console.error(err);
-        alert('Erro ao entrar na sala');
+        alert("Erro ao entrar na sala");
       }
     };
 
-    // Polling para estado do jogo
-    async function fetchGameState() {
-      if (!currentRoom) return;
+    // Atualização periódica do estado do jogo
+    async function pollGameState() {
+      if (!roomId) return;
       try {
         const res = await fetch(`${API}/game_state`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room_id: currentRoom })
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ room_id: roomId })
         });
         const data = await res.json();
         if (res.ok) {
-          document.getElementById('status').innerText =
-            `Turno atual: ${data.turn} | Jogadores conectados: ${JSON.stringify(data.players)}`;
+          renderBoard(data.board);
+          if (data.winner) {
+            alert(`Fim de jogo! Vencedor: ${data.winner}`);
+          } else {
+            setTimeout(pollGameState, 1500);
+          }
         }
       } catch (err) {
-        console.error("Erro no polling:", err);
+        console.error(err);
+        setTimeout(pollGameState, 2000);
       }
     }
 
-    function startPolling() {
-      setInterval(fetchGameState, 3000);
-    }
-
-    // Se abrir com ?room_id= na URL, já preenche
+    // Se abriu com ?room=xxxx
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('room_id')) {
-      document.getElementById('room-code').value = urlParams.get('room_id');
+    if (urlParams.has("room")) {
+      document.getElementById("room-code").value = urlParams.get("room");
     }
   </script>
 </body>
