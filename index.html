@@ -14,13 +14,13 @@
     h1 {
       color: #333;
     }
-    #game, #room-container {
+    #game {
       margin: 20px auto;
       padding: 20px;
       background: white;
       border: 2px solid #ccc;
       border-radius: 10px;
-      width: 300px;
+      width: 350px;
     }
     button {
       margin: 10px;
@@ -48,36 +48,35 @@
       border-radius: 5px;
       display: none;
     }
+    #status {
+      margin-top: 15px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
   <h1>Jogo Multiplayer</h1>
 
-  <!-- Tela inicial -->
   <div id="game">
     <button id="create-room">Criar Sala</button>
     <br>
     <input type="text" id="room-code" placeholder="Código da sala">
+    <select id="player">
+      <option value="w">Brancas</option>
+      <option value="b">Pretas</option>
+    </select>
     <button id="join-room">Entrar na Sala</button>
-    <div id="room-link"></div>
-  </div>
 
-  <!-- Tela da sala -->
-  <div id="room-container" style="display: none;">
-    <h2 id="room-title"></h2>
-    <p>Bem-vindo à sala! 🎮</p>
-    <!-- Aqui futuramente entra o jogo -->
+    <div id="room-link"></div>
+    <div id="status"></div>
   </div>
 
   <script>
     const API = '/api';
     const PUBLIC_URL = window.location.origin;
 
-    // Função para pegar parâmetros da URL
-    function getRoomFromURL() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get("room");
-    }
+    let currentRoom = null;
+    let currentPlayer = null;
 
     // Criar sala
     document.getElementById('create-room').onclick = async () => {
@@ -85,7 +84,8 @@
         const res = await fetch(`${API}/create_room`, { method: 'POST' });
         const data = await res.json();
 
-        const roomLink = `${PUBLIC_URL}/index.html?room=${data.room}`;
+        currentRoom = data.room_id;
+        const roomLink = `${PUBLIC_URL}/index.html?room_id=${currentRoom}`;
         const div = document.getElementById('room-link');
         div.style.display = 'block';
         div.innerHTML = `Sala criada!<br><a href="${roomLink}" target="_blank">${roomLink}</a>`;
@@ -98,17 +98,28 @@
     // Entrar na sala
     document.getElementById('join-room').onclick = async () => {
       const code = document.getElementById('room-code').value.trim();
+      const player = document.getElementById('player').value;
       if (!code) {
         alert('Digite um código de sala!');
         return;
       }
 
       try {
-        const res = await fetch(`${API}/join_room/${code}`, { method: 'POST' });
+        const res = await fetch(`${API}/join_room`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room_id: code, player })
+        });
+        const data = await res.json();
+
         if (res.ok) {
-          window.location.href = `${PUBLIC_URL}/index.html?room=${code}`;
+          currentRoom = code;
+          currentPlayer = player;
+          document.getElementById('status').innerText =
+            `Você entrou na sala ${code} como ${player === 'w' ? 'Brancas' : 'Pretas'}`;
+          startPolling();
         } else {
-          alert('Sala não encontrada!');
+          alert(data.error || 'Erro ao entrar na sala');
         }
       } catch (err) {
         console.error(err);
@@ -116,12 +127,33 @@
       }
     };
 
-    // Se a URL já tem ?room=xxxx → mostrar a sala
-    const currentRoom = getRoomFromURL();
-    if (currentRoom) {
-      document.getElementById('game').style.display = "none";
-      document.getElementById('room-container').style.display = "block";
-      document.getElementById('room-title').innerText = `Sala: ${currentRoom}`;
+    // Polling para estado do jogo
+    async function fetchGameState() {
+      if (!currentRoom) return;
+      try {
+        const res = await fetch(`${API}/game_state`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room_id: currentRoom })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('status').innerText =
+            `Turno atual: ${data.turn} | Jogadores conectados: ${JSON.stringify(data.players)}`;
+        }
+      } catch (err) {
+        console.error("Erro no polling:", err);
+      }
+    }
+
+    function startPolling() {
+      setInterval(fetchGameState, 3000);
+    }
+
+    // Se abrir com ?room_id= na URL, já preenche
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('room_id')) {
+      document.getElementById('room-code').value = urlParams.get('room_id');
     }
   </script>
 </body>
