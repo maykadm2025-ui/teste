@@ -5,96 +5,501 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Damas Multiplayer</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background: #f0f0f0;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    * {
       margin: 0;
-      padding: 20px;
+      padding: 0;
+      box-sizing: border-box;
     }
-    h1 { color: #333; }
-    #menu { margin-bottom: 20px; }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      position: relative;
+      overflow-x: hidden;
+    }
+    
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+                  radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: -1;
+    }
+    
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+    }
+    
+    h1 {
+      color: white;
+      font-size: 3.5rem;
+      font-weight: 700;
+      text-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      margin-bottom: 20px;
+      background: linear-gradient(45deg, #ffd700, #ffed4e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: glow 2s ease-in-out infinite alternate;
+    }
+    
+    @keyframes glow {
+      from { filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.3)); }
+      to { filter: drop-shadow(0 0 40px rgba(255, 215, 0, 0.6)); }
+    }
+    
+    #menu {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(20px);
+      border-radius: 20px;
+      padding: 30px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+      transition: transform 0.3s ease;
+    }
+    
+    #menu:hover {
+      transform: translateY(-5px);
+    }
+    
+    button {
+      padding: 15px 30px;
+      border: none;
+      border-radius: 15px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: 16px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+      transition: left 0.5s;
+    }
+    
+    button:hover::before {
+      left: 100%;
+    }
+    
+    #create-room {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+    }
+    
+    #create-room:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+    }
+    
+    #join-room {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+      box-shadow: 0 10px 30px rgba(240, 147, 251, 0.4);
+    }
+    
+    #join-room:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 40px rgba(240, 147, 251, 0.6);
+    }
+    
+    #room-code {
+      padding: 15px 20px;
+      border: none;
+      border-radius: 15px;
+      background: rgba(255, 255, 255, 0.9);
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      outline: none;
+      transition: all 0.3s ease;
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      min-width: 200px;
+    }
+    
+    #room-code:focus {
+      background: white;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+      transform: translateY(-2px);
+    }
+    
+    #room-code::placeholder {
+      color: #888;
+    }
+    
     #board {
       display: grid;
-      grid-template-columns: repeat(8, 60px);
-      grid-template-rows: repeat(8, 60px);
-      gap: 0;
-      margin: 20px auto;
-      width: 480px;
-      height: 480px;
-      border: 2px solid #333;
+      grid-template-columns: repeat(8, 80px);
+      grid-template-rows: repeat(8, 80px);
+      gap: 2px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(20px);
+      border-radius: 25px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.2);
       display: none;
+      position: relative;
+      transition: all 0.3s ease;
     }
+    
+    #board::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: -2px;
+      right: -2px;
+      bottom: -2px;
+      background: linear-gradient(45deg, #667eea, #764ba2, #f093fb, #f5576c);
+      border-radius: 25px;
+      z-index: -1;
+      opacity: 0.5;
+      animation: rotate 4s linear infinite;
+    }
+    
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    
     .cell {
-      width: 60px;
-      height: 60px;
+      width: 80px;
+      height: 80px;
       display: flex;
       justify-content: center;
       align-items: center;
       cursor: pointer;
+      border-radius: 12px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
     }
-    .dark { background: #769656; }
-    .light { background: #eeeed2; }
+    
+    .cell::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0);
+      transition: background 0.3s ease;
+      border-radius: 12px;
+    }
+    
+    .cell:hover::before {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .dark {
+      background: linear-gradient(135deg, #8B4513 0%, #654321 100%);
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    .light {
+      background: linear-gradient(135deg, #F5DEB3 0%, #DEB887 100%);
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
     .piece {
-      width: 40px;
-      height: 40px;
+      width: 55px;
+      height: 55px;
       border-radius: 50%;
-    }
-    .w { background: white; border: 2px solid #555; }
-    .b { background: black; }
-    .W { background: white; border: 3px solid gold; }
-    .B { background: black; border: 3px solid gold; }
-    .selected {
-      box-shadow: 0 0 0 3px red;
-    }
-    #room-info {
-      margin-top: 15px;
-      padding: 10px;
-      background: #e7f3fe;
-      border: 1px solid #2196F3;
-      border-radius: 5px;
-      display: none;
-    }
-    button {
-      padding: 8px 15px;
-      margin: 5px;
-      border: none;
-      border-radius: 5px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       cursor: pointer;
-      background: #4CAF50;
+      position: relative;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    }
+    
+    .piece::before {
+      content: '';
+      position: absolute;
+      top: 10%;
+      left: 10%;
+      right: 10%;
+      bottom: 10%;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, transparent 50%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    
+    .piece:hover {
+      transform: translateY(-5px) scale(1.05);
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+    }
+    
+    .w {
+      background: linear-gradient(135deg, #ffffff 0%, #f0f0f0 100%);
+      border: 3px solid #d4af37;
+    }
+    
+    .b {
+      background: linear-gradient(135deg, #2c2c2c 0%, #000000 100%);
+      border: 3px solid #c0392b;
+    }
+    
+    .W {
+      background: linear-gradient(135deg, #ffffff 0%, #f0f0f0 100%);
+      border: 4px solid #ffd700;
+      box-shadow: 0 0 30px rgba(255, 215, 0, 0.6), 0 8px 25px rgba(0, 0, 0, 0.3);
+      animation: crown-glow 2s ease-in-out infinite alternate;
+    }
+    
+    .B {
+      background: linear-gradient(135deg, #2c2c2c 0%, #000000 100%);
+      border: 4px solid #ff6b35;
+      box-shadow: 0 0 30px rgba(255, 107, 53, 0.6), 0 8px 25px rgba(0, 0, 0, 0.3);
+      animation: crown-glow 2s ease-in-out infinite alternate;
+    }
+    
+    @keyframes crown-glow {
+      from { transform: scale(1); }
+      to { transform: scale(1.1); }
+    }
+    
+    .selected {
+      box-shadow: 0 0 0 4px #00ff88, 0 0 20px rgba(0, 255, 136, 0.6) !important;
+      animation: pulse-selection 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes pulse-selection {
+      0%, 100% { box-shadow: 0 0 0 4px #00ff88, 0 0 20px rgba(0, 255, 136, 0.6); }
+      50% { box-shadow: 0 0 0 6px #00ff88, 0 0 30px rgba(0, 255, 136, 0.8); }
+    }
+    
+    #room-info {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(20px);
+      border-radius: 20px;
+      padding: 25px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+      display: none;
       color: white;
+      text-align: center;
+      font-size: 16px;
+      line-height: 1.6;
+      max-width: 500px;
+      animation: slideIn 0.5s ease-out;
     }
-    button:hover { background: #45a049; }
+    
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    #room-info a {
+      color: #ffd700;
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.3s ease;
+    }
+    
+    #room-info a:hover {
+      color: #ffed4e;
+      text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+    }
+    
     #status {
-      margin: 10px;
-      font-weight: bold;
+      font-weight: 600;
+      font-size: 24px;
+      padding: 15px 30px;
+      border-radius: 15px;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
     }
+    
     .waiting {
-      color: #ff9900;
+      color: #ffd700;
+      background: rgba(255, 215, 0, 0.1);
+      border: 2px solid rgba(255, 215, 0, 0.3);
+      animation: waiting-pulse 2s ease-in-out infinite;
     }
+    
+    @keyframes waiting-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    
     .your-turn {
-      color: green;
+      color: #00ff88;
+      background: rgba(0, 255, 136, 0.1);
+      border: 2px solid rgba(0, 255, 136, 0.3);
+      animation: your-turn-glow 1.5s ease-in-out infinite alternate;
     }
+    
+    @keyframes your-turn-glow {
+      from { box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
+      to { box-shadow: 0 0 40px rgba(0, 255, 136, 0.6); }
+    }
+    
     .opponent-turn {
-      color: red;
+      color: #ff6b6b;
+      background: rgba(255, 107, 107, 0.1);
+      border: 2px solid rgba(255, 107, 107, 0.3);
+    }
+    
+    /* Responsividade */
+    @media (max-width: 768px) {
+      h1 { font-size: 2.5rem; }
+      
+      #board {
+        grid-template-columns: repeat(8, 60px);
+        grid-template-rows: repeat(8, 60px);
+        padding: 15px;
+      }
+      
+      .cell {
+        width: 60px;
+        height: 60px;
+      }
+      
+      .piece {
+        width: 42px;
+        height: 42px;
+      }
+      
+      #menu {
+        flex-direction: column;
+        gap: 15px;
+      }
+      
+      button, #room-code {
+        width: 100%;
+        min-width: auto;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      #board {
+        grid-template-columns: repeat(8, 45px);
+        grid-template-rows: repeat(8, 45px);
+        padding: 10px;
+      }
+      
+      .cell {
+        width: 45px;
+        height: 45px;
+        border-radius: 8px;
+      }
+      
+      .piece {
+        width: 32px;
+        height: 32px;
+      }
+    }
+    
+    /* Efeitos de partículas */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      z-index: -2;
+    }
+    
+    .particle {
+      position: absolute;
+      width: 2px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      animation: float 6s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(100vh) translateX(0px) rotate(0deg);
+        opacity: 0;
+      }
+      10% {
+        opacity: 1;
+      }
+      90% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(-10vh) translateX(100px) rotate(360deg);
+        opacity: 0;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Damas Multiplayer</h1>
+  <div class="particles" id="particles"></div>
+  
+  <div class="container">
+    <h1>Damas Multiplayer</h1>
 
-  <div id="menu">
-    <button id="create-room">Criar Sala</button>
-    <input type="text" id="room-code" placeholder="Código da sala">
-    <button id="join-room">Entrar</button>
+    <div id="menu">
+      <button id="create-room">Criar Sala</button>
+      <input type="text" id="room-code" placeholder="Código da sala">
+      <button id="join-room">Entrar</button>
+    </div>
+
+    <div id="room-info"></div>
+    <div id="status"></div>
+
+    <div id="board"></div>
   </div>
 
-  <div id="room-info"></div>
-  <div id="status"></div>
-
-  <div id="board"></div>
-
   <script>
+    // Criar partículas de fundo
+    function createParticles() {
+      const particlesContainer = document.getElementById('particles');
+      const particleCount = 50;
+      
+      for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 6 + 's';
+        particle.style.animationDuration = (Math.random() * 3 + 3) + 's';
+        particlesContainer.appendChild(particle);
+      }
+    }
+    
+    createParticles();
+
     const API = "/api";
     const PUBLIC_URL = window.location.origin;
 
