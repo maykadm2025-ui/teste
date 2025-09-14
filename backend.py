@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit, join_room
 import copy
 import uuid
 from threading import Lock
@@ -7,6 +8,8 @@ import time
 
 app = Flask(__name__)
 CORS(app)
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Estrutura para salas multiplayer
 rooms = {}
@@ -159,6 +162,7 @@ def create_room():
             "board": board,
             "turn": WHITE,
             "players": [],
+            "connected": set(),
             "winner": None,
             "last_move": None,
             "created": time.time()
@@ -265,6 +269,30 @@ def move_multiplayer():
             "winner": room["winner"]
         })
 
+# SocketIO events for WebRTC signaling
+@socketio.on('join_game')
+def handle_join_game(data):
+    room_id = data['room_id']
+    player = data['player']
+    with room_lock:
+        if room_id in rooms and player in rooms[room_id]['players']:
+            rooms[room_id]['connected'].add(player)
+            join_room(room_id)
+            if len(rooms[room_id]['connected']) == 2:
+                emit('both_connected', room=room_id)
+
+@socketio.on('offer')
+def handle_offer(data):
+    emit('offer', data, room=data['room_id'], skip_sid=request.sid)
+
+@socketio.on('answer')
+def handle_answer(data):
+    emit('answer', data, room=data['room_id'], skip_sid=request.sid)
+
+@socketio.on('ice_candidate')
+def handle_ice_candidate(data):
+    emit('ice_candidate', data, room=data['room_id'], skip_sid=request.sid)
+
 # Servir index.html e arquivos estáticos
 from flask import send_from_directory
 
@@ -277,4 +305,4 @@ def serve_static(path):
     return send_from_directory('.', path)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
